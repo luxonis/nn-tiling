@@ -1,7 +1,8 @@
 import numpy as np
 import depthai as dai
-from util.functions import non_max_suppression, nms_boxes
+from util.functions import nms_boxes, xywh2xyxy
 from tiling import Tiling
+import torch
 
 class Patcher(dai.node.HostNode):
     def __init__(self) -> None:
@@ -59,11 +60,16 @@ class Patcher(dai.node.HostNode):
         output_tensor = nn_output.getTensor("output").astype(np.float16).reshape(10647, -1)
         output_tensor = np.expand_dims(output_tensor, axis=0)
 
-        bboxes = non_max_suppression(output_tensor, self.conf_thresh, self.iou_thresh)
+        prediction = torch.from_numpy(output_tensor)
+        if prediction.dtype is torch.float16:
+            prediction = prediction.float()
 
-        if bboxes is None or bboxes[0] is None:
-            return np.array([])
-        return bboxes[0]
+        conf_mask = prediction[..., 4] > self.conf_thresh
+        prediction = prediction[conf_mask]
+        boxes = xywh2xyxy(prediction[:, :4])
+        bboxes = torch.cat((boxes, prediction[:, 4:]), 1).numpy()
+        
+        return bboxes
 
     def _map_bboxes_to_tile(self, bboxes, tile_index):
         tile_x, tile_y = self._get_tile_coordinates(tile_index)
@@ -94,9 +100,9 @@ class Patcher(dai.node.HostNode):
         """
         Adjust bounding boxes to the global image coordinates using the tile's top-left corner.
         """
-        adjusted_bboxes = []
-        if bboxes is None or bboxes.ndim == 0:
-            return adjusted_bboxes
+        if bboxes is None or bboxes.ndim == 0 or len(bboxes) == 0:
+            return []
+
         if self.tile_manager is None or self.tile_manager.scale is None or self.tile_manager.scaled_x is None or self.tile_manager.nn_shape is None:
             raise ValueError("Tile manager not initialized.")
 
@@ -106,15 +112,22 @@ class Patcher(dai.node.HostNode):
         x_offset = (nn_shape - scaled_width) // 2
         y_offset = (nn_shape - scaled_height) // 2
         
-        for box in bboxes:
+        adjusted_bboxes = np.empty_like(bboxes)
+        for i, box in enumerate(bboxes):
             x1, y1, x2, y2 = box[:4]
-
-            x1 = (x1 - x_offset) / scale + tile_x 
+            x1 = (x1 - x_offset) / scale + tile_x
             y1 = (y1 - y_offset) / scale + tile_y
             x2 = (x2 - x_offset) / scale + tile_x
             y2 = (y2 - y_offset) / scale + tile_y
 
-            adjusted_bboxes.append([x1, y1, x2, y2, box[4], box[5]])
+            if x2 <= x1 or y2 <= y1:
+                continue 
+
+            adjusted_bboxes[i, 0] = x1
+            adjusted_bboxes[i, 1] = y1
+            adjusted_bboxes[i, 2] = x2
+            adjusted_bboxes[i, 3] = y2
+            adjusted_bboxes[i, 4:] = box[4:]
 
         return adjusted_bboxes
 
@@ -128,20 +141,19 @@ class Patcher(dai.node.HostNode):
 
         if combined_bboxes:
             data_array = np.array(combined_bboxes, dtype=np.float32)
-            
             final_bboxes = nms_boxes(data_array, conf_thresh=self.conf_thresh, iou_thresh=self.iou_thresh)
             
             if len(final_bboxes) > 0:
-                # Flatten the array for buffer
-                data_array = final_bboxes.flatten()
+                data_array = np.array(final_bboxes, dtype=np.float32)
             else:
                 data_array = np.array([], dtype=np.float32)
         else:
             data_array = np.array([], dtype=np.float32)
 
+        serialized_data = data_array.tobytes()
+        uint8_data_list = list(np.frombuffer(serialized_data, dtype=np.uint8))
         output_buffer = dai.Buffer()
-        # Set the data attribute directly
-        output_buffer.setData(data_array.view(np.uint8).tolist())
+        output_buffer.setData(uint8_data_list)
         output_buffer.setTimestamp(timestamp)
         output_buffer.setTimestampDevice(device_timestamp)
 

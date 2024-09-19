@@ -1,6 +1,7 @@
 # functions taken from https://github.com/ultralytics/yolov5/blob/master/utils/general.py
 
 import torch
+from torch import from_numpy
 import torchvision
 import time
 import numpy as np
@@ -27,8 +28,12 @@ def to_planar(arr: np.ndarray, shape: tuple) -> np.ndarray:
     Returns:
     - A 1D NumPy array with the planar image data.
     """
-    resized = cv2.resize(arr, shape)  # Resize image to match the network input shape
-    return resized.transpose(2, 0, 1).flatten() 
+    if arr.shape[:2] == shape:
+        resized = arr 
+    else:
+        resized = cv2.resize(arr, shape)
+
+    return resized.transpose(2, 0, 1).flatten()
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, classes=None, agnostic=False):
     """Performs Non-Maximum Suppression (NMS) on inference results
@@ -106,44 +111,70 @@ def nms_boxes(boxes, conf_thresh=0.3, iou_thresh=0.4):
     """
     Applies Non-Maximum Suppression (NMS) on bounding boxes.
 
+    Parameters:
+    - boxes: NumPy array of shape (num_boxes, 5 + num_classes).
+    - conf_thresh: Confidence threshold for filtering boxes.
+    - iou_thresh: IoU threshold for NMS.
+
     Returns:
-    - A list of bounding boxes after NMS.
+    - A NumPy array of bounding boxes after NMS.
     """
     if len(boxes) == 0:
-        return []
-    
-    boxes = boxes[boxes[:, 4] >= conf_thresh]
-    if len(boxes) == 0:
-        return []
+        return np.array([])
 
-    # Extract coordinates and scores
-    x1 = boxes[:, 0]
-    y1 = boxes[:, 1]
-    x2 = boxes[:, 2]
-    y2 = boxes[:, 3]
-    
-    scores = boxes[:, 4]
-    areas = (x2 - x1) * (y2 - y1)
-    order = scores.argsort()[::-1]
+    num_classes = boxes.shape[1] - 5
+    obj_conf = boxes[:, 4]
+    prediction = boxes[obj_conf >= conf_thresh]
+    if len(prediction) == 0:
+        return np.array([])
 
-    keep = []
-    while order.size > 0:
-        i = order[0]
-        keep.append(i)
+    prediction[:, 5:] *= prediction[:, 4:5] # conf = obj_conf * cls_conf
 
-        # Compute IoU of the kept box with the rest
-        xx1 = np.maximum(x1[i], x1[order[1:]])
-        yy1 = np.maximum(y1[i], y1[order[1:]])
-        xx2 = np.minimum(x2[i], x2[order[1:]])
-        yy2 = np.minimum(y2[i], y2[order[1:]])
+    final_boxes = []
 
-        w = np.maximum(0.0, xx2 - xx1)
-        h = np.maximum(0.0, yy2 - yy1)
+    for class_idx in range(num_classes):
+        class_scores = prediction[:, 5 + class_idx]
+        class_mask = class_scores >= conf_thresh
+        class_boxes = prediction[class_mask]
+        if len(class_boxes) == 0:
+            continue
 
-        inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        x1 = class_boxes[:, 0]
+        y1 = class_boxes[:, 1]
+        x2 = class_boxes[:, 2]
+        y2 = class_boxes[:, 3]
+        
+        scores = class_scores[class_mask]
+        areas = (x2 - x1) * (y2 - y1)
+        order = scores.argsort()[::-1] # descending 
 
-        inds = np.where(ovr <= iou_thresh)[0]
-        order = order[inds + 1]
+        keep = []
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
 
-    return boxes[keep]
+            # Compute IoU of the kept box with the rest
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+
+            w = np.maximum(0, xx2 - xx1)
+            h = np.maximum(0, yy2 - yy1)
+            inter = w * h
+            union = areas[i] + areas[order[1:]] - inter
+            iou = inter / (union + 1e-6)
+
+            # Keep boxes with IoU less than threshold
+            inds = np.where(iou <= iou_thresh)[0]
+            order = order[inds + 1]
+
+        # Append kept boxes and assign class index
+        class_boxes = class_boxes[keep]
+        class_boxes = np.hstack((class_boxes[:, :5], np.full((len(keep), 1), class_idx, dtype=np.int32)))
+        final_boxes.append(class_boxes)
+
+    if len(final_boxes) == 0:
+        return np.array([])
+
+    return np.vstack(final_boxes)

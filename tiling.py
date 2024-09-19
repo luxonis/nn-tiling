@@ -7,34 +7,18 @@ class Tiling(dai.node.HostNode):
     def __init__(self) -> None:
         super().__init__()
         self.name = "Tiling"
-        self.nn_input = None
         self.overlap = None
         self.grid_size = None
-        self.nn_output_queue = None
-        self.nn_path = None
-        self.conf_thresh = 0.3
-        self.iou_thresh = 0.4
         self.nn_shape = None
         self.x = None # vector [x,y] of the tile's dimensions
         self.scale = None
         self.scaled_x = None
 
-    def set_conf_thresh(self, conf_thresh: float) -> None:
-        self.conf_thresh = conf_thresh
-
-    def set_iou_thresh(self, iou_thresh: float) -> None:
-        self.iou_thresh = iou_thresh
-
-    def set_nn_output_queue(self, nn_output_q: dai.MessageQueue) -> None:
-        self.nn_output_queue = nn_output_q
-
-    def build(self, overlap: float, img_output: dai.Node.Output, nn_input: dai.InputQueue, grid_size: tuple, img_shape: tuple, nn_path: str, nn_shape: int) -> "Tiling":
+    def build(self, overlap: float, img_output: dai.Node.Output, grid_size: tuple, img_shape: tuple, nn_shape: int) -> "Tiling":
         self.sendProcessingToPipeline(True)
         self.link_args(img_output)
-        self.nn_input = nn_input
         self.overlap = overlap
         self.grid_size = grid_size
-        self.nn_path = nn_path
         self.nn_shape = nn_shape
         self.x = self._calculate_tiles(grid_size, img_shape, overlap)
         
@@ -44,29 +28,29 @@ class Tiling(dai.node.HostNode):
     def process(self, img_frame) -> None:
         frame: np.ndarray = img_frame.getCvFrame()
 
-        if self.grid_size is None or self.x is None:
+        if self.grid_size is None or self.x is None or self.nn_shape is None:
             raise ValueError("Grid size or tile dimensions are not initialized.")
             
         img_height, img_width, _ = frame.shape
         tile_width, tile_height = self.x
-
         tiles = self._extract_tiles(frame, img_height, img_width, tile_width, tile_height)
 
+        tile_padded = np.zeros((self.nn_shape, self.nn_shape, 3), dtype=np.uint8)
+
         for index, (tile, _) in enumerate(tiles):
-            tile_img_frame = self._create_img_frame(tile, img_frame, index)
-            # cv2.imshow(f"Tile {index}", tile_img_frame.getCvFrame())
+            tile_img_frame = self._create_img_frame(tile, img_frame, index, tile_padded)
             self.out.send(tile_img_frame)            
 
-    def _create_img_frame(self, tile: np.ndarray, frame, tile_index) -> dai.ImgFrame:
+    def _create_img_frame(self, tile: np.ndarray, frame, tile_index, tile_padded) -> dai.ImgFrame:
         """
         Creates an ImgFrame from the tile, which is then sent to the neural network input queue.
         """
         if self.nn_shape is None or self.scaled_x is None:
             raise ValueError("NN shape or scaled tile dimensions are not initialized.")
         new_width, new_height = self.scaled_x
-        tile_resized = cv2.resize(tile, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+        tile_resized = cv2.resize(tile, (new_width, new_height), interpolation=cv2.INTER_NEAREST)
+        tile_padded.fill(0)
 
-        tile_padded = np.zeros((self.nn_shape, self.nn_shape, 3), dtype=np.uint8)
         x_offset = (self.nn_shape - new_width) // 2 
         y_offset = (self.nn_shape - new_height) // 2
         tile_padded[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = tile_resized
