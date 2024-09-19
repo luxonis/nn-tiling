@@ -25,8 +25,8 @@ conf_thresh = 0.3
 iou_thresh = 0.4 
 
 NN_SHAPE = 416
-IMG_SHAPE = (1280, 720)
-# IMG_SHAPE = (3840, 2160)
+# IMG_SHAPE = (1280, 720)
+IMG_SHAPE = (3840, 2160)
 
 with dai.Pipeline() as pipeline:
     pipeline.setOpenVINOVersion(version = dai.OpenVINO.VERSION_2021_4)
@@ -54,8 +54,8 @@ with dai.Pipeline() as pipeline:
     replay = pipeline.create(dai.node.ReplayVideo)
     replay.setLoop(False)
     replay.setOutFrameType(dai.ImgFrame.Type.BGR888p)
-    replay.setReplayVideoFile(Path('videos/2.1.mp4'))
-    # replay.setReplayVideoFile(Path('videos/4k_traffic.mp4'))
+    # replay.setReplayVideoFile(Path('videos/2.1.mp4'))
+    replay.setReplayVideoFile(Path('videos/4k_traffic.mp4'))
     replay.setSize(IMG_SHAPE)
     replay.setFps(1)
     cam_out = replay.out

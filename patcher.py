@@ -1,6 +1,6 @@
 import numpy as np
 import depthai as dai
-from util.functions import non_max_suppression
+from util.functions import non_max_suppression, nms_boxes
 from tiling import Tiling
 
 class Patcher(dai.node.HostNode):
@@ -127,7 +127,15 @@ class Patcher(dai.node.HostNode):
             combined_bboxes.extend(bboxes)
 
         if combined_bboxes:
-            data_array = np.array(combined_bboxes, dtype=np.float32).flatten()
+            data_array = np.array(combined_bboxes, dtype=np.float32)
+            
+            final_bboxes = nms_boxes(data_array, conf_thresh=self.conf_thresh, iou_thresh=self.iou_thresh)
+            
+            if len(final_bboxes) > 0:
+                # Flatten the array for buffer
+                data_array = final_bboxes.flatten()
+            else:
+                data_array = np.array([], dtype=np.float32)
         else:
             data_array = np.array([], dtype=np.float32)
 
