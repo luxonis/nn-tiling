@@ -17,6 +17,29 @@ This project splits an input frame into smaller tiles, processes each tile with 
 python main.py
 ```
 
+## Custom Tiling with Grid Matrix
+
+You can define a custom tiling pattern using a grid matrix, allowing you to merge adjacent tiles with the same index into larger tiles. This provides flexibility in partitioning the image and optimizes performance and detection accuracy for specific use cases.
+
+### Defining the Grid Matrix
+
+The grid matrix is a 2D list where each element represents a tile. Adjacent tiles with the same integer are merged into a single larger tile. Here are some examples:
+
+```python
+grid_size = (4,3) # 4 tiles horizontally and 3 tiles vertically
+grid_matrix_no_merge = [
+    [0, 1, 0, 1],
+    [1, 0, 1, 0],
+    [0, 1, 0, 1],
+] # the matrix has to have the shape defines in grid_size
+grid_matrix_1_merge = [
+    [0, 1, 0, 1],
+    [2, 2, 1, 0],
+    [2, 2, 0, 1],
+] # the matrix has to have the shape defines in grid_size
+```
+> Note: only **adjacent** same integers are recorgnized to be a tile. It is not based on the index itself.
+
 ## Choosing Grid Size and Overlap
 > It is a trade-off game. Choose based on your specific usecase and just test it out few times ;).
 
