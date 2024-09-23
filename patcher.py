@@ -26,7 +26,7 @@ class Patcher(dai.node.HostNode):
         self.tile_manager = tile_manager
         if self.tile_manager.x is None or self.tile_manager.grid_size is None or self.tile_manager.overlap is None:
             raise ValueError("Tile dimensions, grid size, or overlap not initialized.")
-        self.expected_tiles_count = self.tile_manager.grid_size[0] * self.tile_manager.grid_size[1]
+        self.expected_tiles_count = len(self.tile_manager.tile_positions) 
         self.sendProcessingToPipeline(True)
         self.link_args(nn)
         return self
@@ -49,7 +49,17 @@ class Patcher(dai.node.HostNode):
         mapped_bboxes = self._map_bboxes_to_tile(bboxes, tile_index)
         self.tile_buffer.append(mapped_bboxes)
 
+        # print info
+        # print("Tile index:", tile_index)
+        # print("Bounding boxes:", len(mapped_bboxes))
+        # print("Tile buffer length:", len(self.tile_buffer))
+        # print()
+
         if len(self.tile_buffer) == self.expected_tiles_count:
+            # print("------------------------------------------------")
+            # print("All tiles processed.")
+            # print("------------------------------------------------")
+            # print()
             self._send_output(timestamp, device_timestamp)
             self.tile_buffer = []
 
@@ -72,62 +82,52 @@ class Patcher(dai.node.HostNode):
         return bboxes
 
     def _map_bboxes_to_tile(self, bboxes, tile_index):
-        tile_x, tile_y = self._get_tile_coordinates(tile_index)
-        mapped_bboxes = self._adjust_bboxes_to_tile(bboxes, tile_x, tile_y)
+        tile_info = self._get_tile_info(tile_index)
+        if tile_info is None:
+            return []
+        tile_x, tile_y = tile_info['coords'][:2]
+        scaled_width, scaled_height = tile_info['scaled_size']
+        tile_scale = min(self.tile_manager.nn_shape / (tile_info['coords'][2] - tile_info['coords'][0]),
+                         self.tile_manager.nn_shape / (tile_info['coords'][3] - tile_info['coords'][1]))
+        mapped_bboxes = self._adjust_bboxes_to_tile(bboxes, tile_x, tile_y, scaled_width, scaled_height, tile_scale)
         return mapped_bboxes
 
-    def _get_tile_coordinates(self, tile_index):
+    def _get_tile_info(self, tile_index):
         """
-        Given a tile index, calculate the true (x, y) coordinates of the top-left corner.
+        Retrieves the tile's coordinates and scaled dimensions based on the tile index.
         """
-        if self.tile_manager is None or self.tile_manager.x is None or self.tile_manager.grid_size is None or self.tile_manager.overlap is None:
-            raise ValueError("Tile dimensions, grid size, or overlap not initialized.")
-        if self.tile_manager.x is None or self.tile_manager.grid_size is None or self.tile_manager.overlap is None:
-            raise ValueError("Tile dimensions, grid size, or overlap not initialized.")
+        if self.tile_manager is None or self.tile_manager.tile_positions is None:
+            raise ValueError("Tile manager or tile positions not initialized.")
+        if tile_index >= len(self.tile_manager.tile_positions):
+            return None
+        return self.tile_manager.tile_positions[tile_index]
 
-        tile_width, tile_height = self.tile_manager.x
-        n, _ = self.tile_manager.grid_size
-
-        row = tile_index // n
-        col = tile_index % n
-
-        x = col * tile_width * (1 - self.tile_manager.overlap)
-        y = row * tile_height * (1 - self.tile_manager.overlap)
-
-        return int(x), int(y)
-
-    def _adjust_bboxes_to_tile(self, bboxes, tile_x, tile_y):
+    def _adjust_bboxes_to_tile(self, bboxes, tile_x, tile_y, scaled_width, scaled_height, tile_scale):
         """
-        Adjust bounding boxes to the global image coordinates using the tile's top-left corner.
+        Adjust bounding boxes to the global image coordinates using the tile's top-left corner and scaling.
         """
         if bboxes is None or bboxes.ndim == 0 or len(bboxes) == 0:
             return []
 
-        if self.tile_manager is None or self.tile_manager.scale is None or self.tile_manager.scaled_x is None or self.tile_manager.nn_shape is None:
-            raise ValueError("Tile manager not initialized.")
-
-        scale = self.tile_manager.scale
-        scaled_width, scaled_height = self.tile_manager.scaled_x
         nn_shape = self.tile_manager.nn_shape
         x_offset = (nn_shape - scaled_width) // 2
         y_offset = (nn_shape - scaled_height) // 2
-        
-        adjusted_bboxes = np.empty_like(bboxes)
-        for i, box in enumerate(bboxes):
+
+        adjusted_bboxes = []
+        for box in bboxes:
             x1, y1, x2, y2 = box[:4]
-            x1 = (x1 - x_offset) / scale + tile_x
-            y1 = (y1 - y_offset) / scale + tile_y
-            x2 = (x2 - x_offset) / scale + tile_x
-            y2 = (y2 - y_offset) / scale + tile_y
+
+            # Reverse scaling and offset applied during tiling
+            x1 = (x1 - x_offset) / tile_scale + tile_x
+            y1 = (y1 - y_offset) / tile_scale + tile_y
+            x2 = (x2 - x_offset) / tile_scale + tile_x
+            y2 = (y2 - y_offset) / tile_scale + tile_y
 
             if x2 <= x1 or y2 <= y1:
-                continue 
+                continue
 
-            adjusted_bboxes[i, 0] = x1
-            adjusted_bboxes[i, 1] = y1
-            adjusted_bboxes[i, 2] = x2
-            adjusted_bboxes[i, 3] = y2
-            adjusted_bboxes[i, 4:] = box[4:]
+            adjusted_box = [x1, y1, x2, y2] + box[4:].tolist()
+            adjusted_bboxes.append(adjusted_box)
 
         return adjusted_bboxes
 

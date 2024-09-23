@@ -4,7 +4,6 @@ from tiling import Tiling
 from patcher import Patcher
 from display import Display
 from pathlib import Path
-import blobconverter
 
 labelMap = [
     "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
@@ -46,13 +45,19 @@ with dai.Pipeline() as pipeline:
     cam_out = replay.out
     
     overlap = 0.2
-    grid_size = (3,2) # (number of tiles horizontally, number of tiles vertically)
+    grid_size = (5,3) # (number of tiles horizontally, number of tiles vertically)
+    grid_matrix = [
+        [0, 1, 0, 1, 1],
+        [2, 2, 2, 1, 1],
+        [2, 2, 2, 1, 1]
+    ]
    
     tile_manager = pipeline.create(Tiling).build(
         img_output=cam_out,
         img_shape=IMG_SHAPE, 
         overlap=overlap,
         grid_size=grid_size,
+        grid_matrix=grid_matrix,
         nn_shape=NN_SHAPE
     )
 
@@ -60,6 +65,7 @@ with dai.Pipeline() as pipeline:
     detection_nn.setBlobPath(Path(nn_path))
     detection_nn.setNumPoolFrames(6)
     detection_nn.input.setBlocking(False)
+    detection_nn.input.setMaxSize(len(tile_manager.tile_positions))
     detection_nn.setNumInferenceThreads(2)
     detection_nn.setNumShavesPerInferenceThread(8)
     tile_manager.out.link(detection_nn.input)
@@ -74,9 +80,7 @@ with dai.Pipeline() as pipeline:
     display = pipeline.create(Display).build(
         frame=cam_out,
         boxes=patcher.out,
-        x=tile_manager.x,
-        overlap=overlap,
-        grid_size=grid_size,
+        tile_positions=tile_manager.tile_positions,
         label_map=labelMap
     )
 

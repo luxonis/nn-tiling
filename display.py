@@ -11,9 +11,7 @@ class Display(dai.node.HostNode):
         self.name = "Display"
         self.process_wait_key = False
         self.label_map = None
-        self.x = None
-        self.overlap = None
-        self.grid_size = None
+        self.tile_positions = None 
         self.draw_grid_bool = True
 
         self.fps = None
@@ -28,13 +26,11 @@ class Display(dai.node.HostNode):
             self.process_wait_key = True
             Display._wait_key_instance = self
 
-    def build(self, frame, boxes, x, overlap, grid_size, label_map):
+    def build(self, frame, boxes, tile_positions, label_map):
         self.sendProcessingToPipeline(True)
         self.link_args(frame, boxes)
         self.label_map = label_map
-        self.x = x
-        self.overlap = overlap
-        self.grid_size = grid_size
+        self.tile_positions = tile_positions
         return self
 
     def process(self, img_frame, boxes_buffer: dai.Buffer) -> None:
@@ -93,40 +89,29 @@ class Display(dai.node.HostNode):
                     1.3, (255, 255, 255), 3, cv2.LINE_AA)
         
     def draw_grid(self, frame: np.ndarray) -> None:
-        if self.x is None or self.grid_size is None or self.overlap is None:
-            print("Error: Tile dimensions, grid size, or overlap are not set.")
+        if not self.tile_positions:
+            print("Error: Tile positions are not set.")
             return
 
-        tile_width, tile_height = self.x
-        n_tiles_w, n_tiles_h = self.grid_size
         img_height, img_width, _ = frame.shape
 
-        np.random.seed(432) 
+        np.random.seed(432)
         colors = [
-            (np.random.randint(0, 255), np.random.randint(0, 255), np.random.randint(0, 255), 0.3) 
-            for _ in range(n_tiles_w * n_tiles_h)
+            (np.random.randint(0, 255), np.random.randint(0, 255), np.random.randint(0, 255), 0.3)
+            for _ in range(len(self.tile_positions))
         ]
-        
-        color_idx = 0
-        
-        for i in range(n_tiles_h):
-            for j in range(n_tiles_w):
-                x1 = int(j * tile_width * (1 - self.overlap))
-                y1 = int(i * tile_height * (1 - self.overlap))
-                x2 = min(int(x1 + tile_width), img_width)
-                y2 = min(int(y1 + tile_height), img_height)
 
-                color = colors[color_idx]
-                color_idx += 1
-                
-                self._draw_filled_rect_with_alpha(frame, (x1, y1), (x2, y2), color)
-                
-        # draw grid info
-        grid_size_text = f"{n_tiles_h}x{n_tiles_w} overlap: {self.overlap}" 
-        text_x = img_width // 2
-        text_y = img_height - 30 
+        for idx, tile_info in enumerate(self.tile_positions):
+            x1, y1, x2, y2 = tile_info['coords']
+            color = colors[idx % len(colors)]
+            self._draw_filled_rect_with_alpha(frame, (int(x1), int(y1)), (int(x2), int(y2)), color)
 
-        cv2.putText(frame, grid_size_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 
+        # Optionally, display grid info
+        grid_info_text = f"Tiles: {len(self.tile_positions)}"
+        text_x = img_width // 2 - 100
+        text_y = img_height - 30
+
+        cv2.putText(frame, grid_info_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
                     self.font_scale, (255, 255, 255), self.font_thickness, cv2.LINE_AA)
 
     def _draw_filled_rect_with_alpha(self, frame, top_left, bottom_right, color_with_alpha):
