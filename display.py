@@ -106,7 +106,6 @@ class Display(dai.node.HostNode):
             color = colors[idx % len(colors)]
             self._draw_filled_rect_with_alpha(frame, (int(x1), int(y1)), (int(x2), int(y2)), color)
 
-        # Optionally, display grid info
         grid_info_text = f"Tiles: {len(self.tile_positions)}"
         text_x = img_width // 2 - 100
         text_y = img_height - 30

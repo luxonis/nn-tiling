@@ -40,16 +40,19 @@ with dai.Pipeline() as pipeline:
     replay.setOutFrameType(dai.ImgFrame.Type.BGR888p)
     # replay.setReplayVideoFile(Path('videos/2.1.mp4'))
     replay.setReplayVideoFile(Path('videos/4k_traffic.mp4'))
+    # replay.setReplayVideoFile(Path('videos/cattle_drone.mp4'))
+    # replay.setReplayVideoFile(Path('videos/cattle_drone_closed_up.mp4'))
+    # replay.setReplayVideoFile(Path('videos/cattle_drone_very_far.mp4'))
     replay.setSize(IMG_SHAPE)
-    replay.setFps(3)
+    replay.setFps(2)
     cam_out = replay.out
     
     overlap = 0.2
-    grid_size = (5,3) # (number of tiles horizontally, number of tiles vertically)
+    grid_size = (3, 2) # (number of tiles horizontally, number of tiles vertically)
     grid_matrix = [
-        [0, 1, 0, 1, 1],
-        [2, 2, 2, 1, 1],
-        [2, 2, 2, 1, 1]
+        [0, 1, 0],
+        [2, 2, 1],
+        [2, 2, 0]
     ]
    
     tile_manager = pipeline.create(Tiling).build(
@@ -58,6 +61,7 @@ with dai.Pipeline() as pipeline:
         overlap=overlap,
         grid_size=grid_size,
         grid_matrix=grid_matrix,
+        # global_detection=True,
         nn_shape=NN_SHAPE
     )
 

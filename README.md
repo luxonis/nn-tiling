@@ -23,7 +23,7 @@ You can define a custom tiling pattern using a grid matrix, allowing you to merg
 
 ### Defining the Grid Matrix
 
-The grid matrix is a 2D list where each element represents a tile. Adjacent tiles with the same integer are merged into a single larger tile. Here are some examples:
+The grid matrix is a 2D list where each element represents a tile. Adjacent tiles with the same integer are *merged* into a single larger tile. Here are some examples:
 
 ```python
 grid_size = (4,3) # 4 tiles horizontally and 3 tiles vertically
@@ -66,7 +66,6 @@ We use *Non-Maximum Suppression (NMS)* to filter out overlapping detections. NMS
 > Why Split-up Objects Happen?
 > When large objects span multiple tiles, they can be split into partial detections in each tile. These partial detections need to be merged into one detection for the object.
 
-**TO BE IMPLEMENTED**
+There is a **global detection** option: Instead of detecting objects in small tiles only, process a full image as well. This is set to default as `False`. You can turn this on by passing the variable `global_detection=True` to the `build()` of the `Tiling` node.
 
-Idea for Handling Split-up Objects:
-Detect in the Full Frame: Instead of detecting objects in small tiles only, process a larger frame or full image as well.
+If you know before hand that a there is an usual area where objects are going to be larger then the tiles, you can merge them for better quality output.
