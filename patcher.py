@@ -39,6 +39,7 @@ class Patcher(dai.node.HostNode):
             self.current_timestamp = timestamp
 
         if self.current_timestamp != timestamp and len(self.tile_buffer) > 0:
+            # new frame started, send the output for the previous frame
             self._send_output(self.current_timestamp, device_timestamp)
             self.tile_buffer = []
 
@@ -56,6 +57,7 @@ class Patcher(dai.node.HostNode):
         # print()
 
         if len(self.tile_buffer) == self.expected_tiles_count:
+            # all tiles processed
             # print("------------------------------------------------")
             # print("All tiles processed.")
             # print("------------------------------------------------")

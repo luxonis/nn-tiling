@@ -111,12 +111,15 @@ class Tiling(dai.node.HostNode):
 
         tile_width, tile_height = self.x
 
+        # labels to keep track of visited and unvisited tiles (-1 means unvisited)
         labels = [[-1 for _ in range(n_tiles_w)] for _ in range(n_tiles_h)]
         component_id = 0
 
+        # Find connected components using a depth-first search
         for i in range(n_tiles_h):
             for j in range(n_tiles_w):
                 if labels[i][j] != -1:
+                    # Already visited, skip
                     continue 
 
                 # Start a new component
@@ -125,18 +128,24 @@ class Tiling(dai.node.HostNode):
                 while queue:
                     ci, cj = queue.pop()
                     if labels[ci][cj] != -1:
+                        # Already visited, skip
                         continue
                     if self.grid_matrix[ci][cj] != index_value:
+                        # Not part of the same component, skip
                         continue
+                    # this tile is part of the current component, give it a label
                     labels[ci][cj] = component_id
 
-                    # Check neighbors (up, down, left, right)
+                    # BFS: Check neighbors (up, down, left, right)
                     for ni, nj in [(ci-1, cj), (ci+1, cj), (ci, cj-1), (ci, cj+1)]:
                         if 0 <= ni < n_tiles_h and 0 <= nj < n_tiles_w:
                             if labels[ni][nj] == -1 and self.grid_matrix[ni][nj] == index_value:
+                                # this tile is part of the current component, add it to the queue to explore its neighbors
                                 queue.append((ni, nj))
+                # queue is empty, the current component is fully explored, move on to the next component
                 component_id += 1
 
+        # Group tiles by component
         components = {}
         for i in range(n_tiles_h):
             for j in range(n_tiles_w):
@@ -156,7 +165,7 @@ class Tiling(dai.node.HostNode):
                 'scaled_size': (scaled_width, scaled_height)
             })
         
-        # add the rest of the tiles
+        # Compute the bounding box for each component
         for comp_id, positions in components.items():
             x1_list = []
             y1_list = []
@@ -183,6 +192,7 @@ class Tiling(dai.node.HostNode):
             tile_actual_width = x2 - x1
             tile_actual_height = y2 - y1
 
+            # the scaled dimenstion after being resized to fit nn_shape (precomputed and saved for optimization)
             scale = min(self.nn_shape / tile_actual_width, self.nn_shape / tile_actual_height)
             scaled_width = int(tile_actual_width * scale)
             scaled_height = int(tile_actual_height * scale)

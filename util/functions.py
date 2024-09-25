@@ -1,7 +1,6 @@
 # functions taken from https://github.com/ultralytics/yolov5/blob/master/utils/general.py
 
 import torch
-from torch import from_numpy
 import torchvision
 import time
 import numpy as np
