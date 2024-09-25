@@ -14,9 +14,9 @@ class Tiling(dai.node.HostNode):
         self.x = None # vector [x,y] of the tile's dimensions
         self.tile_positions = []
         self.img_shape = None
-        self.global_detection = True
+        self.global_detection = False 
 
-    def build(self, overlap: float, img_output: dai.Node.Output, grid_size: tuple, grid_matrix, img_shape: tuple, nn_shape: int, global_detection: bool = True) -> "Tiling":
+    def build(self, overlap: float, img_output: dai.Node.Output, grid_size: tuple, grid_matrix, img_shape: tuple, nn_shape: int, global_detection: bool = False) -> "Tiling":
         self.sendProcessingToPipeline(True)
         self.link_args(img_output)
         self.overlap = overlap
